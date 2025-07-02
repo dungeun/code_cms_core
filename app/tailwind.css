@@ -4,9 +4,180 @@
 
 html,
 body {
-  @apply bg-white dark:bg-gray-950;
+  @apply bg-white;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 
-  @media (prefers-color-scheme: dark) {
-    color-scheme: dark;
+}
+
+
+
+@layer base {
+  :root {
+    /* Theme colors */
+    --color-primary: #3B82F6;
+    --color-primary-rgb: 59 130 246;
+    --color-secondary: #6366F1;
+    --color-secondary-rgb: 99 102 241;
+    --color-background: #FFFFFF;
+    --color-background-rgb: 255 255 255;
+    --color-text: #1F2937;
+    --color-text-rgb: 31 41 55;
+    
+    /* Font settings - Mobile first */
+    --font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-size-base: 14px;
+    --font-size-h1: 1.75rem;
+    --font-size-h2: 1.5rem;
+    --font-size-h3: 1.25rem;
+    
+    /* Tablet and up */
+    @media (min-width: 768px) {
+      --font-size-base: 16px;
+      --font-size-h1: 2rem;
+      --font-size-h2: 1.75rem;
+      --font-size-h3: 1.5rem;
+    }
+    
+    /* Desktop */
+    @media (min-width: 1024px) {
+      --font-size-h1: 2.5rem;
+      --font-size-h2: 2rem;
+      --font-size-h3: 1.75rem;
+    }
+    
+    /* Existing theme variables */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 217 91% 60%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.5rem;
+  }
+}
+
+
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-size: var(--font-size-base);
+    font-family: var(--font-family);
+  }
+  
+  /* Responsive Typography */
+  h1 {
+    font-size: var(--font-size-h1);
+    @apply font-bold leading-tight;
+  }
+  
+  h2 {
+    font-size: var(--font-size-h2);
+    @apply font-semibold leading-tight;
+  }
+  
+  h3 {
+    font-size: var(--font-size-h3);
+    @apply font-semibold leading-normal;
+  }
+  
+  /* Touch target optimization */
+  button, a, [role="button"] {
+    @apply min-h-[44px] min-w-[44px];
+  }
+  
+  /* Mobile-friendly spacing */
+  .container {
+    @apply px-4 sm:px-6 lg:px-8;
+  }
+}
+
+@layer components {
+  /* Touch-friendly components */
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+  
+  /* Mobile-optimized card */
+  .mobile-card {
+    @apply rounded-lg shadow-sm bg-white p-4 transition-shadow duration-200;
+    @apply hover:shadow-md active:shadow-sm;
+  }
+  
+  /* Responsive text truncation */
+  .line-clamp-2-mobile {
+    @apply line-clamp-2 sm:line-clamp-3;
+  }
+  
+  /* Mobile-friendly buttons */
+  .btn-mobile {
+    @apply px-4 py-2.5 text-sm font-medium rounded-lg;
+    @apply sm:px-5 sm:py-3 sm:text-base;
+    @apply touch-manipulation;
+  }
+  
+  /* Responsive grid gaps */
+  .gap-responsive {
+    @apply gap-3 sm:gap-4 md:gap-6;
+  }
+  
+  /* Mobile-first spacing utilities */
+  .py-responsive {
+    @apply py-6 sm:py-8 md:py-12;
+  }
+  
+  .px-responsive {
+    @apply px-4 sm:px-6 md:px-8;
+  }
+}
+
+@layer utilities {
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Safe area insets for mobile devices */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  .safe-left {
+    padding-left: env(safe-area-inset-left);
+  }
+  
+  .safe-right {
+    padding-right: env(safe-area-inset-right);
   }
 }

@@ -1,0 +1,211 @@
+// 월급루팡 CMS 데이터베이스 스키마
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 메뉴 테이블 (카테고리)
+model Menu {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  icon        String?
+  order       Int      @default(0)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  posts       Post[]
+  
+  @@map("menus")
+}
+
+// 사용자 테이블
+model User {
+  id                String    @id @default(cuid())
+  username          String    @unique
+  email             String    @unique
+  password          String
+  name              String?
+  role              Role      @default(USER)
+  isActive          Boolean   @default(true) @map("is_active")
+  emailVerified     Boolean   @default(false) @map("email_verified")
+  emailVerifiedAt   DateTime? @map("email_verified_at")
+  resetToken        String?   @unique @map("reset_token")
+  resetTokenExpiry  DateTime? @map("reset_token_expiry")
+  lastLoginAt       DateTime? @map("last_login_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  
+  posts     Post[]
+  comments  Comment[]
+  sessions  Session[]
+  
+  @@map("users")
+}
+
+// 게시글 테이블
+model Post {
+  id          String    @id @default(cuid())
+  menuId      String    @map("menu_id")
+  title       String
+  slug        String    @unique
+  content     String
+  excerpt     String?
+  authorId    String    @map("author_id")
+  views       Int       @default(0)
+  likes       Int       @default(0)
+  isNotice    Boolean   @default(false) @map("is_notice")
+  isPublished Boolean   @default(true) @map("is_published")
+  publishedAt DateTime? @map("published_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  menu        Menu      @relation(fields: [menuId], references: [id])
+  author      User      @relation(fields: [authorId], references: [id])
+  comments    Comment[]
+  
+  @@index([menuId])
+  @@index([authorId])
+  @@index([createdAt])
+  @@index([publishedAt])
+  @@map("posts")
+}
+
+// 댓글 테이블
+model Comment {
+  id        String   @id @default(cuid())
+  postId    String   @map("post_id")
+  authorId  String   @map("author_id")
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id])
+  
+  @@index([postId])
+  @@index([authorId])
+  @@map("comments")
+}
+
+// 블록 테이블
+model Block {
+  id       String   @id @default(cuid())
+  type     String   // 'hero', 'recent-posts', etc
+  name     String
+  location String   // 'home', 'sidebar', etc
+  config   String   @default("{}") // 블록별 설정 (JSON 문자열)
+  order    Int      @default(0)
+  isActive Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@unique([location, order])
+  @@map("blocks")
+}
+
+// 사이트 설정 테이블
+model Setting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  type        String   // 'string', 'json', 'number', 'boolean'
+  category    String   // 'general', 'email', 'social', etc
+  label       String?
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@map("settings")
+}
+
+// 세션 테이블
+model Session {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([token])
+  @@map("sessions")
+}
+
+// 네비게이션 메뉴 테이블
+model NavigationMenu {
+  id        String   @id @default(cuid())
+  name      String
+  position  String   // 'header', 'footer', etc
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  items     MenuItem[]
+  
+  @@unique([name, position])
+  @@map("navigation_menus")
+}
+
+// 메뉴 아이템 테이블
+model MenuItem {
+  id        String   @id @default(cuid())
+  menuId    String   @map("menu_id")
+  parentId  String?  @map("parent_id")
+  title     String
+  url       String
+  target    String   @default("_self")
+  order     Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  menu      NavigationMenu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  parent    MenuItem?      @relation("MenuItemChildren", fields: [parentId], references: [id])
+  children  MenuItem[]     @relation("MenuItemChildren")
+  
+  @@index([menuId])
+  @@index([parentId])
+  @@map("menu_items")
+}
+
+// 역할 enum
+enum Role {
+  ADMIN
+  USER
+}
+
+// 게시글 상태 enum
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// 페이지 설정 테이블
+model PageConfig {
+  id        String   @id @default(cuid())
+  name      String   @unique // 'homepage', 'about', etc
+  config    Json     // 블록 설정 배열
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@map("page_configs")
+}
+
+// 블록 타입 상수 (참고용)
+// BLOCK_TYPES = {
+//   HERO: 'hero',
+//   RECENT_POSTS: 'recent_posts',
+//   POPULAR_POSTS: 'popular_posts',
+//   CATEGORY_POSTS: 'category_posts',
+//   BANNER: 'banner',
+//   CUSTOM_HTML: 'custom_html'
+// }
