@@ -3,5 +3,11 @@ node_modules
 /.cache
 /build
 .env
+.env.local
 
-/generated/prisma
+# Database
+prisma/dev.db
+prisma/dev.db-journal
+
+# Generated files
+/generated
