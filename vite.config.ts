@@ -103,13 +103,19 @@ export default defineConfig({
       'react/jsx-runtime',
       '@remix-run/react',
       'clsx',
-      'tailwind-merge'
+      'tailwind-merge',
+      'lru-cache'
     ],
     exclude: [
       // 큰 라이브러리는 제외하여 초기 로드 최적화
       'date-fns',
       'lucide-react'
     ]
+  },
+
+  // SSR 옵션
+  ssr: {
+    noExternal: ['lru-cache']
   },
   
   // CSS 최적화

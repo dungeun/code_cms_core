@@ -1,7 +1,7 @@
 // Prometheus 메트릭 엔드포인트
 
 import type { LoaderFunction } from '@remix-run/node';
-import { Response } from '@remix-run/node';
+import { json } from '@remix-run/node';
 import { prometheusRegistry } from '../lib/monitoring/prometheus.server';
 
 export const loader: LoaderFunction = async ({ request }) => {
@@ -9,7 +9,7 @@ export const loader: LoaderFunction = async ({ request }) => {
     // Prometheus 메트릭 수집
     const metrics = await prometheusRegistry.metrics();
     
-    return new Response(metrics, {
+    return new globalThis.Response(metrics, {
       status: 200,
       headers: {
         'Content-Type': 'text/plain; version=0.0.4; charset=utf-8',
@@ -22,7 +22,7 @@ export const loader: LoaderFunction = async ({ request }) => {
   } catch (error) {
     console.error('Metrics collection failed:', error);
     
-    return new Response('# Metrics unavailable', {
+    return new globalThis.Response('# Metrics unavailable', {
       status: 503,
       headers: {
         'Content-Type': 'text/plain'

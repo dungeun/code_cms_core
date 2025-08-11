@@ -133,7 +133,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         email: true,
         createdAt: true,
         role: true,
-        status: true,
+        isActive: true,
       },
     }),
 
@@ -291,10 +291,10 @@ export default function AdminDashboard() {
           title="최근 가입 사용자"
           items={recentActivity.users.map(user => ({
             id: user.id,
-            title: user.name,
+            title: user.name || user.email,
             subtitle: user.email,
             timestamp: new Date(user.createdAt).toLocaleString('ko-KR'),
-            status: user.status.toLowerCase(),
+            status: user.isActive ? 'active' : 'inactive',
             meta: user.role,
           }))}
           viewAllUrl="/admin/users"

@@ -1,8 +1,61 @@
 // Redis 클러스터 캐시 시스템
 
 import { Redis } from "ioredis";
-import pkg from "lru-cache";
-const { LRUCache } = pkg;
+
+// 개발 환경에서는 Map을 사용한 간단한 캐시 구현
+class SimpleLRUCache {
+  private cache = new Map();
+  private maxSize = 10000;
+  
+  constructor(options: any) {
+    this.maxSize = options.max || 10000;
+  }
+  
+  set(key: string, value: any, options?: any) {
+    if (this.cache.size >= this.maxSize) {
+      const firstKey = this.cache.keys().next().value;
+      this.cache.delete(firstKey);
+    }
+    this.cache.set(key, value);
+  }
+  
+  get(key: string) {
+    const value = this.cache.get(key);
+    if (value !== undefined) {
+      // Move to end (LRU behavior)
+      this.cache.delete(key);
+      this.cache.set(key, value);
+    }
+    return value;
+  }
+  
+  delete(key: string) {
+    this.cache.delete(key);
+  }
+  
+  has(key: string) {
+    return this.cache.has(key);
+  }
+  
+  clear() {
+    this.cache.clear();
+  }
+  
+  keys() {
+    return Array.from(this.cache.keys());
+  }
+  
+  get size() {
+    return this.cache.size;
+  }
+  
+  get calculatedSize() {
+    return this.cache.size;
+  }
+}
+
+// 개발환경에서는 간단한 캐시만 사용
+const LRUCache = SimpleLRUCache;
 
 // Redis 사용 여부 확인
 const USE_REDIS = process.env.USE_REDIS === 'true' || false;

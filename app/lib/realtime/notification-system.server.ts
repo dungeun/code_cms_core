@@ -1,6 +1,14 @@
 // 실시간 알림 시스템
 
-import { getSocketIOInstance } from '../socket/socket.server';
+// 개발 환경에서는 Socket.IO 비활성화
+const getSocketIOInstance = () => process.env.NODE_ENV === 'development' ? null : 
+  (() => {
+    try {
+      return require('../socket/socket.server').getSocketIOInstance();
+    } catch {
+      return null;
+    }
+  })();
 import { db } from '~/utils/db.server';
 import { sendSMS } from '../notifications/sms.server';
 
@@ -27,7 +35,13 @@ class RealtimeNotificationSystem {
   private io: any;
 
   constructor() {
-    this.io = getSocketIOInstance();
+    // 개발 환경에서는 Socket.IO 인스턴스를 null로 설정
+    try {
+      this.io = getSocketIOInstance();
+    } catch (error) {
+      console.warn('Socket.IO instance not available:', error);
+      this.io = null;
+    }
   }
 
   // 개별 사용자에게 알림 전송

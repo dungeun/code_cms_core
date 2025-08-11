@@ -41,7 +41,7 @@ export const loader: LoaderFunction = async ({ request }) => {
   }
 
   if (status !== 'all') {
-    where.status = status.toUpperCase();
+    where.isActive = status === 'active';
   }
 
   // 사용자 목록 조회
@@ -54,7 +54,7 @@ export const loader: LoaderFunction = async ({ request }) => {
         email: true,
         username: true,
         role: true,
-        status: true,
+        isActive: true,
         lastLoginAt: true,
         createdAt: true,
         _count: {
@@ -110,7 +110,7 @@ const userActionSchema = z.discriminatedUnion('action', [
       email: z.string().email().max(255).optional(),
       username: z.string().min(3).max(50).optional(),
       role: z.enum(['USER', 'ADMIN']).optional(),
-      status: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED']).optional(),
+      isActive: z.boolean().optional(),
     }),
   }),
   z.object({
@@ -167,7 +167,7 @@ export const action: ActionFunction = async ({ request }) => {
           data: {
             ...validatedData.data,
             password: hashedPassword,
-            status: 'ACTIVE',
+            isActive: true,
           },
           select: {
             id: true,
@@ -175,7 +175,7 @@ export const action: ActionFunction = async ({ request }) => {
             email: true,
             username: true,
             role: true,
-            status: true,
+            isActive: true,
             createdAt: true,
           },
         });
@@ -196,7 +196,7 @@ export const action: ActionFunction = async ({ request }) => {
         if (validatedData.data.email) updateData.email = validatedData.data.email;
         if (validatedData.data.username) updateData.username = validatedData.data.username;
         if (validatedData.data.role) updateData.role = validatedData.data.role;
-        if (validatedData.data.status) updateData.status = validatedData.data.status;
+        if (validatedData.data.isActive !== undefined) updateData.isActive = validatedData.data.isActive;
 
         // 이메일/사용자명 중복 확인 (업데이트하는 경우)
         if (updateData.email || updateData.username) {
@@ -229,7 +229,7 @@ export const action: ActionFunction = async ({ request }) => {
             email: true,
             username: true,
             role: true,
-            status: true,
+            isActive: true,
             updatedAt: true,
           },
         });
@@ -272,14 +272,14 @@ export const action: ActionFunction = async ({ request }) => {
           case 'activate':
             await db.user.updateMany({
               where: { id: { in: userIds } },
-              data: { status: 'ACTIVE' },
+              data: { isActive: true },
             });
             break;
 
           case 'suspend':
             await db.user.updateMany({
               where: { id: { in: userIds } },
-              data: { status: 'SUSPENDED' },
+              data: { isActive: false },
             });
             break;
 
