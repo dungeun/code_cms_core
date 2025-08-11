@@ -28,6 +28,8 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
     
     rollupOptions: {
+      // 서버 사이드 빌드에서 외부 의존성으로 처리
+      external: ['sharp'],
       output: {
         // 수동 청크 분할로 번들 크기 최적화
         manualChunks: {
