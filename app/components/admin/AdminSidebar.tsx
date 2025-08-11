@@ -9,6 +9,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Palette,
+  BarChart3,
+  Globe,
+  Blocks,
 } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { useState } from "react";
@@ -35,6 +38,16 @@ const sidebarItems = [
     icon: Menu,
   },
   {
+    title: "페이지 빌더",
+    href: "/admin/page-builder",
+    icon: Blocks,
+  },
+  {
+    title: "통계 분석",
+    href: "/admin/analytics",
+    icon: BarChart3,
+  },
+  {
     title: "사이트 설정",
     href: "/admin/settings",
     icon: Settings,
@@ -43,6 +56,12 @@ const sidebarItems = [
     title: "테마 설정",
     href: "/admin/theme",
     icon: Palette,
+  },
+  {
+    title: "UI 구성 관리",
+    href: "/admin/ui-config",
+    icon: Globe,
+    description: "메인 페이지 섹션 관리",
   },
 ];
 

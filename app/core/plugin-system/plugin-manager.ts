@@ -17,6 +17,9 @@ import {
 } from './plugin.types';
 import HookSystem from './hook-system';
 import PluginLoader from './plugin-loader';
+import { PluginIntegrationManager, type PluginRoute, type PluginMenuItem, type PluginWidget } from './integrations';
+import { createPluginDatabaseClient } from './database-client';
+import { createPluginCacheClient, initializeCache } from './cache-interface';
 import { EventEmitter } from 'events';
 
 /**
@@ -37,6 +40,7 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   private plugins: Map<string, PluginInfo>;
   private hookSystem: HookSystem;
   private loader: PluginLoader;
+  private integrationManager: PluginIntegrationManager;
   private initialized: boolean;
 
   private constructor() {
@@ -44,7 +48,11 @@ export class PluginManager extends EventEmitter implements IPluginManager {
     this.plugins = new Map();
     this.hookSystem = HookSystem.getInstance();
     this.loader = PluginLoader.getInstance();
+    this.integrationManager = PluginIntegrationManager.getInstance();
     this.initialized = false;
+    
+    // 캐시 시스템 초기화
+    initializeCache();
   }
 
   /**
@@ -214,22 +222,57 @@ export class PluginManager extends EventEmitter implements IPluginManager {
         }
       }
 
-      // 플러그인 라우트 등록 (실제 구현은 라우팅 시스템과 연동 필요)
-      if (pluginInfo.plugin.routes) {
-        console.log(`플러그인 ${pluginId}의 ${pluginInfo.plugin.routes.length}개 라우트 등록`);
-        // TODO: 라우트 시스템과 연동
+      // 플러그인 통합 요소 등록 (라우트, 메뉴, 위젯)
+      const integrations: {
+        routes?: PluginRoute[];
+        menuItems?: PluginMenuItem[];
+        widgets?: PluginWidget[];
+      } = {};
+
+      // 플러그인 라우트를 통합 시스템용 형식으로 변환
+      if (pluginInfo.plugin.routes && pluginInfo.plugin.routes.length > 0) {
+        integrations.routes = pluginInfo.plugin.routes.map(route => ({
+          path: route.path,
+          component: `${pluginId}/${route.path}`,
+          loader: route.middleware ? 'with-middleware' : undefined,
+          permissions: ['plugin:' + pluginId]
+        }));
+        console.log(`플러그인 ${pluginId}의 ${integrations.routes.length}개 라우트 등록`);
       }
 
-      // 플러그인 메뉴 아이템 등록 (실제 구현은 메뉴 시스템과 연동 필요)
-      if (pluginInfo.plugin.menuItems) {
-        console.log(`플러그인 ${pluginId}의 ${pluginInfo.plugin.menuItems.length}개 메뉴 아이템 등록`);
-        // TODO: 메뉴 시스템과 연동
+      // 플러그인 메뉴를 통합 시스템용 형식으로 변환
+      if (pluginInfo.plugin.menuItems && pluginInfo.plugin.menuItems.length > 0) {
+        integrations.menuItems = pluginInfo.plugin.menuItems.map(menuItem => ({
+          id: `${pluginId}-${menuItem.id}`,
+          label: menuItem.title,
+          url: menuItem.path,
+          icon: typeof menuItem.icon === 'string' ? menuItem.icon : undefined,
+          order: menuItem.order || 100,
+          permissions: menuItem.permissions || ['plugin:' + pluginId]
+        }));
+        console.log(`플러그인 ${pluginId}의 ${integrations.menuItems.length}개 메뉴 아이템 등록`);
       }
 
-      // 플러그인 위젯 등록 (실제 구현은 위젯 시스템과 연동 필요)
-      if (pluginInfo.plugin.widgets) {
-        console.log(`플러그인 ${pluginId}의 ${pluginInfo.plugin.widgets.length}개 위젯 등록`);
-        // TODO: 위젯 시스템과 연동
+      // 플러그인 위젯을 통합 시스템용 형식으로 변환
+      if (pluginInfo.plugin.widgets && pluginInfo.plugin.widgets.length > 0) {
+        integrations.widgets = pluginInfo.plugin.widgets.map(widget => ({
+          id: `${pluginId}-${widget.id}`,
+          name: widget.title,
+          description: `${pluginId} 플러그인의 ${widget.title} 위젯`,
+          component: `${pluginId}/${widget.id}`,
+          position: widget.zone === 'dashboard' ? 'content' : 
+                   widget.zone === 'sidebar' ? 'sidebar' :
+                   widget.zone === 'header' ? 'header' :
+                   widget.zone === 'footer' ? 'footer' : 'content',
+          order: widget.order || 100,
+          permissions: ['plugin:' + pluginId]
+        }));
+        console.log(`플러그인 ${pluginId}의 ${integrations.widgets.length}개 위젯 등록`);
+      }
+
+      // 통합 시스템에 등록
+      if (Object.keys(integrations).length > 0) {
+        this.integrationManager.registerPlugin(pluginInfo.plugin, integrations);
       }
 
       pluginInfo.status = PluginStatus.ACTIVE;
@@ -277,7 +320,8 @@ export class PluginManager extends EventEmitter implements IPluginManager {
       // 플러그인의 모든 훅 제거
       this.hookSystem.unregisterAll(pluginId);
 
-      // TODO: 라우트, 메뉴, 위젯 제거
+      // 통합 시스템에서 플러그인 제거
+      this.integrationManager.unregisterPlugin(pluginId);
 
       pluginInfo.status = PluginStatus.INACTIVE;
       pluginInfo.config.enabled = false;
@@ -373,8 +417,8 @@ export class PluginManager extends EventEmitter implements IPluginManager {
   private createPluginContext(plugin: IPlugin): IPluginContext {
     return {
       plugin,
-      db: null, // TODO: 실제 DB 인스턴스 제공
-      cache: null, // TODO: 실제 캐시 인스턴스 제공
+      db: createPluginDatabaseClient(plugin.id),
+      cache: createPluginCacheClient(plugin.id),
       logger: {
         info: (message: string, ...args: any[]) => {
           console.log(`[${plugin.id}] ${message}`, ...args);
@@ -402,7 +446,22 @@ export class PluginManager extends EventEmitter implements IPluginManager {
             pluginInfo.config.settings = {};
           }
           pluginInfo.config.settings[key] = value;
-          // TODO: 영구 저장
+          
+          // 설정을 플러그인 데이터로 영구 저장
+          const db = createPluginDatabaseClient(plugin.id);
+          try {
+            await db.pluginData.upsert({
+              where: { pluginId_key: { pluginId: plugin.id, key: `config.${key}` } },
+              update: { value },
+              create: { 
+                pluginId: plugin.id, 
+                key: `config.${key}`, 
+                value 
+              }
+            });
+          } catch (error) {
+            console.error(`설정 저장 실패 [${plugin.id}]:`, error);
+          }
         }
       },
       getPlugin: (pluginId: string): IPlugin | undefined => {

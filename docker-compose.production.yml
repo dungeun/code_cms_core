@@ -1,0 +1,348 @@
+# 프로덕션 환경 Docker Compose 설정
+
+version: '3.8'
+
+services:
+  # 애플리케이션 서버
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+      args:
+        - NODE_ENV=production
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_CLUSTER_NODES=${REDIS_CLUSTER_NODES}
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - KAKAO_CLIENT_ID=${KAKAO_CLIENT_ID}
+      - KAKAO_CLIENT_SECRET=${KAKAO_CLIENT_SECRET}
+      - NAVER_CLIENT_ID=${NAVER_CLIENT_ID}
+      - NAVER_CLIENT_SECRET=${NAVER_CLIENT_SECRET}
+      - TOSS_SECRET_KEY=${TOSS_SECRET_KEY}
+      - TOSS_CLIENT_KEY=${TOSS_CLIENT_KEY}
+      - NAVER_SENS_SERVICE_ID=${NAVER_SENS_SERVICE_ID}
+      - NAVER_SENS_ACCESS_KEY=${NAVER_SENS_ACCESS_KEY}
+      - NAVER_SENS_SECRET_KEY=${NAVER_SENS_SECRET_KEY}
+      - SMS_FROM_NUMBER=${SMS_FROM_NUMBER}
+    volumes:
+      - app_uploads:/app/uploads
+      - app_logs:/app/logs
+    depends_on:
+      postgres_primary:
+        condition: service_healthy
+      redis_cluster:
+        condition: service_started
+    networks:
+      - blee_cms_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`${DOMAIN:-blee-cms.com}`)"
+      - "traefik.http.routers.app.tls=true"
+      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.app.loadbalancer.server.port=3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 로드 밸런서 및 리버스 프록시
+  traefik:
+    image: traefik:v3.0
+    restart: unless-stopped
+    command:
+      - --api.dashboard=true
+      - --api.insecure=false
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --global.sendanonymoususage=false
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - blee_cms_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.${DOMAIN:-blee-cms.com}`)"
+      - "traefik.http.routers.traefik.tls=true"
+      - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.middlewares.auth.basicauth.users=${TRAEFIK_AUTH}"
+
+  # PostgreSQL 메인 데이터베이스
+  postgres_primary:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-blee_cms}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=ko_KR.UTF-8"
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./scripts/postgres-setup.sql:/docker-entrypoint-initdb.d/setup.sql
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - blee_cms_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL 읽기 복제본 1
+  postgres_read_1:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-blee_cms}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGUSER: ${POSTGRES_USER}
+    volumes:
+      - postgres_read_1_data:/var/lib/postgresql/data
+      - ./scripts/postgres-replica-setup.sh:/docker-entrypoint-initdb.d/replica-setup.sh
+    ports:
+      - "${POSTGRES_READ_PORT_1:-5433}:5432"
+    depends_on:
+      - postgres_primary
+    networks:
+      - blee_cms_network
+    command: >
+      bash -c "
+        until pg_isready -h postgres_primary -p 5432 -U ${POSTGRES_USER}; do
+          echo 'Waiting for primary database...'
+          sleep 2
+        done
+        echo 'Primary database is ready. Starting replica...'
+        docker-entrypoint.sh postgres -c 'hot_standby=on' -c 'max_standby_streaming_delay=30s'
+      "
+
+  # Redis 클러스터 노드 1
+  redis_node_1:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      redis-server 
+      --cluster-enabled yes 
+      --cluster-config-file nodes-1.conf 
+      --cluster-node-timeout 5000 
+      --appendonly yes
+      --protected-mode no
+      --port 7001
+    ports:
+      - "7001:7001"
+      - "17001:17001"
+    volumes:
+      - redis_1_data:/data
+    networks:
+      blee_cms_network:
+        ipv4_address: 172.20.0.11
+
+  # Redis 클러스터 노드 2
+  redis_node_2:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      redis-server 
+      --cluster-enabled yes 
+      --cluster-config-file nodes-2.conf 
+      --cluster-node-timeout 5000 
+      --appendonly yes
+      --protected-mode no
+      --port 7002
+    ports:
+      - "7002:7002"
+      - "17002:17002"
+    volumes:
+      - redis_2_data:/data
+    networks:
+      blee_cms_network:
+        ipv4_address: 172.20.0.12
+
+  # Redis 클러스터 노드 3
+  redis_node_3:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      redis-server 
+      --cluster-enabled yes 
+      --cluster-config-file nodes-3.conf 
+      --cluster-node-timeout 5000 
+      --appendonly yes
+      --protected-mode no
+      --port 7003
+    ports:
+      - "7003:7003"
+      - "17003:17003"
+    volumes:
+      - redis_3_data:/data
+    networks:
+      blee_cms_network:
+        ipv4_address: 172.20.0.13
+
+  # Redis 클러스터 초기화
+  redis_cluster:
+    image: redis:7-alpine
+    restart: "no"
+    depends_on:
+      - redis_node_1
+      - redis_node_2
+      - redis_node_3
+    entrypoint: >
+      sh -c "
+        echo 'Waiting for Redis nodes to be ready...'
+        sleep 10
+        redis-cli --cluster create 172.20.0.11:7001 172.20.0.12:7002 172.20.0.13:7003 --cluster-replicas 0 --cluster-yes
+        echo 'Redis cluster created successfully'
+      "
+    networks:
+      - blee_cms_network
+
+  # 모니터링 - Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - blee_cms_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prometheus.rule=Host(`monitoring.${DOMAIN:-blee-cms.com}`)"
+      - "traefik.http.routers.prometheus.tls=true"
+      - "traefik.http.routers.prometheus.tls.certresolver=letsencrypt"
+
+  # 모니터링 - Grafana
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - blee_cms_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.${DOMAIN:-blee-cms.com}`)"
+      - "traefik.http.routers.grafana.tls=true"
+      - "traefik.http.routers.grafana.tls.certresolver=letsencrypt"
+
+  # 로그 수집 - Loki
+  loki:
+    image: grafana/loki:latest
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml
+      - loki_data:/tmp/loki
+    networks:
+      - blee_cms_network
+
+  # 로그 전송 - Promtail
+  promtail:
+    image: grafana/promtail:latest
+    restart: unless-stopped
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml
+      - app_logs:/app/logs:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - blee_cms_network
+
+  # 백업 서비스
+  backup:
+    image: postgres:15-alpine
+    restart: "no"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-blee_cms}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_SCHEDULE: "0 2 * * *"  # 매일 새벽 2시
+      BACKUP_RETENTION_DAYS: "30"
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      S3_BACKUP_BUCKET: ${S3_BACKUP_BUCKET}
+    volumes:
+      - backup_data:/backups
+      - ./scripts/backup.sh:/usr/local/bin/backup.sh
+      - ./scripts/restore.sh:/usr/local/bin/restore.sh
+    entrypoint: >
+      sh -c "
+        echo '${BACKUP_SCHEDULE} /usr/local/bin/backup.sh' | crontab -
+        crond -f
+      "
+    depends_on:
+      - postgres_primary
+    networks:
+      - blee_cms_network
+
+volumes:
+  app_uploads:
+    driver: local
+  app_logs:
+    driver: local
+  postgres_primary_data:
+    driver: local
+  postgres_read_1_data:
+    driver: local
+  redis_1_data:
+    driver: local
+  redis_2_data:
+    driver: local
+  redis_3_data:
+    driver: local
+  traefik_letsencrypt:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  loki_data:
+    driver: local
+  backup_data:
+    driver: local
+
+networks:
+  blee_cms_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

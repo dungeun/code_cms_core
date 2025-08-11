@@ -208,9 +208,9 @@ export interface IPluginContext {
   /** 현재 플러그인 정보 */
   plugin: IPlugin;
   /** 데이터베이스 접근 */
-  db: any; // TODO: 실제 DB 타입으로 교체
+  db: import('~/core/plugin-system/types').DatabaseClient;
   /** 캐시 접근 */
-  cache: any; // TODO: 실제 캐시 타입으로 교체
+  cache: import('~/core/plugin-system/types').CacheInterface;
   /** 로거 */
   logger: {
     info: (message: string, ...args: any[]) => void;

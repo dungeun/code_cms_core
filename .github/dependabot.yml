@@ -1,0 +1,89 @@
+version: 2
+updates:
+  # npm 의존성 업데이트
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 10
+    target-branch: "develop"
+    labels:
+      - "dependencies"
+      - "npm"
+    reviewers:
+      - "your-github-username"
+    assignees:
+      - "your-github-username"
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+    ignore:
+      # 메이저 버전 업데이트는 수동으로
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # 개발 의존성 그룹화
+      dev-dependencies:
+        patterns:
+          - "@types/*"
+          - "eslint*"
+          - "prettier*"
+          - "vitest*"
+          - "playwright*"
+        update-types:
+          - "minor"
+          - "patch"
+      
+      # Remix 관련 의존성 그룹화
+      remix:
+        patterns:
+          - "@remix-run/*"
+        update-types:
+          - "minor"
+          - "patch"
+      
+      # 보안 관련 의존성
+      security:
+        patterns:
+          - "bcryptjs"
+          - "jsonwebtoken"
+          - "helmet"
+          - "cors"
+        update-types:
+          - "patch"
+
+  # Docker 이미지 업데이트
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+      timezone: "Asia/Seoul"
+    labels:
+      - "dependencies"
+      - "docker"
+    reviewers:
+      - "your-github-username"
+    commit-message:
+      prefix: "chore"
+
+  # GitHub Actions 업데이트
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:00"
+      timezone: "Asia/Seoul"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    reviewers:
+      - "your-github-username"
+    commit-message:
+      prefix: "ci"

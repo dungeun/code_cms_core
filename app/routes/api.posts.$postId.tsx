@@ -1,5 +1,5 @@
 import { json, type ActionFunctionArgs } from "@remix-run/node";
-import { db } from "~/lib/db.server";
+import { db } from "~/utils/db.server";
 import { requireUserId } from "~/lib/auth.server";
 
 export async function action({ request, params }: ActionFunctionArgs) {

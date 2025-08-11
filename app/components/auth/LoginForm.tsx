@@ -1,13 +1,17 @@
-import { Form, Link, useActionData, useSearchParams } from '@remix-run/react';
+import { Form, Link, useActionData, useSearchParams, useLoaderData } from '@remix-run/react';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { useRef } from 'react';
 
 interface LoginFormProps {
   error?: string;
+  testCredentials?: {
+    admin: { email: string; password: string; };
+    user: { email: string; password: string; };
+  } | null;
 }
 
-export function LoginForm({ error }: LoginFormProps) {
+export function LoginForm({ error, testCredentials }: LoginFormProps) {
   const [searchParams] = useSearchParams();
   const redirectTo = searchParams.get('redirectTo') || '/';
   const actionData = useActionData<{ error?: string }>();
@@ -121,35 +125,37 @@ export function LoginForm({ error }: LoginFormProps) {
         </div>
       </div>
 
-      <div className="space-y-3">
-        <p className="text-center text-sm text-muted-foreground">
-          테스트 계정으로 둘러보기
-        </p>
-        <div className="grid grid-cols-2 gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => handleTestLogin('admin@bleecms.com', 'admin123!@#')}
-            className="w-full"
-          >
-            <div className="text-left">
-              <div className="font-medium">관리자</div>
-              <div className="text-xs text-muted-foreground">admin@bleecms.com</div>
-            </div>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => handleTestLogin('user1@example.com', 'password123')}
-            className="w-full"
-          >
-            <div className="text-left">
-              <div className="font-medium">일반 사용자</div>
-              <div className="text-xs text-muted-foreground">user1@example.com</div>
-            </div>
-          </Button>
+      {testCredentials && (
+        <div className="space-y-3">
+          <p className="text-center text-sm text-muted-foreground">
+            테스트 계정으로 둘러보기 (개발 환경)
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleTestLogin(testCredentials.admin.email, testCredentials.admin.password)}
+              className="w-full"
+            >
+              <div className="text-left">
+                <div className="font-medium">관리자</div>
+                <div className="text-xs text-muted-foreground">{testCredentials.admin.email}</div>
+              </div>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleTestLogin(testCredentials.user.email, testCredentials.user.password)}
+              className="w-full"
+            >
+              <div className="text-left">
+                <div className="font-medium">일반 사용자</div>
+                <div className="text-xs text-muted-foreground">{testCredentials.user.email}</div>
+              </div>
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

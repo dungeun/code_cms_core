@@ -2,6 +2,8 @@ import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from '@remix-r
 import { useLoaderData, useSearchParams } from '@remix-run/react';
 import { PasswordResetForm } from '~/components/auth/PasswordResetForm';
 import { createPasswordResetToken, resetPassword } from '~/lib/auth.server';
+import { sendPasswordResetEmail } from '~/lib/email.server';
+import { prisma } from '~/lib/db.server';
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
@@ -25,8 +27,16 @@ export async function action({ request }: ActionFunctionArgs) {
       // 보안상 이유로 사용자 존재 여부와 관계없이 성공 메시지 표시
       // 실제로는 여기서 이메일을 보내야 함
       if (result) {
-        // TODO: 이메일 발송 로직 구현
-        console.log('Password reset link:', `/auth/forgot-password?token=${result.resetToken}`);
+        // 사용자 정보 조회
+        const user = await prisma.user.findUnique({
+          where: { email },
+          select: { name: true, username: true, email: true }
+        });
+
+        if (user) {
+          // 이메일 발송
+          await sendPasswordResetEmail(user, result.resetToken);
+        }
       }
       
       return json({ success: true });

@@ -31,7 +31,7 @@ model User {
   id                String    @id @default(cuid())
   username          String    @unique
   email             String    @unique
-  password          String
+  password          String?  // OAuth 사용자는 비밀번호 없을 수 있음
   name              String?
   role              Role      @default(USER)
   isActive          Boolean   @default(true) @map("is_active")
@@ -43,10 +43,19 @@ model User {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
   
+  // OAuth 필드
+  provider          String?   // 'kakao', 'naver', 'google', 'local'
+  providerId        String?   @map("provider_id") // OAuth provider의 user ID
+  profileImage      String?   @map("profile_image")
+  
   posts     Post[]
   comments  Comment[]
   sessions  Session[]
+  oauthAccounts OAuthAccount[]
+  notifications Notification[]
+  notificationPreference NotificationPreference?
   
+  @@unique([provider, providerId])
   @@map("users")
 }
 
@@ -198,6 +207,82 @@ model PageConfig {
   updatedAt DateTime @updatedAt @map("updated_at")
   
   @@map("page_configs")
+}
+
+// 플러그인 데이터 저장
+model PluginData {
+  id        String   @id @default(cuid())
+  pluginId  String
+  key       String
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([pluginId, key], name: "pluginId_key")
+  @@map("plugin_data")
+}
+
+// OAuth 계정 연결 테이블
+model OAuthAccount {
+  id                String    @id @default(cuid())
+  userId            String    @map("user_id")
+  provider          String    // 'kakao', 'naver', 'google'
+  providerId        String    @map("provider_id")
+  accessToken       String?   @map("access_token")
+  refreshToken      String?   @map("refresh_token")
+  tokenExpiry       DateTime? @map("token_expiry")
+  scope             String?
+  profileData       Json?     @map("profile_data") // 전체 프로필 정보 저장
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([provider, providerId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+// 알림 모델
+model Notification {
+  id                String    @id @default(uuid())
+  userId            String    @map("user_id")
+  type              String
+  priority          String
+  channels          String[]
+  status            String
+  data              Json
+  
+  createdAt         DateTime  @default(now()) @map("created_at")
+  sentAt            DateTime? @map("sent_at")
+  deliveredAt       DateTime? @map("delivered_at")
+  readAt            DateTime? @map("read_at")
+  expiresAt         DateTime? @map("expires_at")
+  
+  retryCount        Int?      @map("retry_count")
+  lastRetryAt       DateTime? @map("last_retry_at")
+  error             String?
+  
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, status])
+  @@index([createdAt])
+  @@index([type])
+  @@map("notifications")
+}
+
+// 알림 설정 모델
+model NotificationPreference {
+  id                String    @id @default(uuid())
+  userId            String    @unique @map("user_id")
+  data              Json      // 설정 데이터 (channels, types, quietHours 등)
+  
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("notification_preferences")
 }
 
 // 블록 타입 상수 (참고용)

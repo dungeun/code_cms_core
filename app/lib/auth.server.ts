@@ -3,27 +3,27 @@ import crypto from 'crypto';
 import { db } from '~/utils/db.server';
 import { createCookieSessionStorage, redirect } from '@remix-run/node';
 import type { User } from '@prisma/client';
+import { env, security } from './env.server';
+import { 
+  getSessionManager, 
+  redisSessionStorage,
+  type SessionData 
+} from './session.server';
 
-// 세션 스토리지 설정
-const sessionSecret = process.env.SESSION_SECRET || 'default-session-secret';
-if (!process.env.SESSION_SECRET) {
-  console.warn('SESSION_SECRET 환경 변수가 설정되지 않았습니다. 프로덕션에서는 반드시 설정하세요.');
-}
+// Redis 세션 사용 여부 (환경 변수로 제어)
+const USE_REDIS_SESSION = process.env.USE_REDIS_SESSION === 'true' || 
+                          process.env.REDIS_HOST_1 !== undefined;
 
-export const sessionStorage = createCookieSessionStorage({
-  cookie: {
-    name: 'blee_session',
-    secure: process.env.NODE_ENV === 'production',
-    secrets: [sessionSecret],
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 30, // 30일
-    httpOnly: true,
-  },
-});
+// 세션 스토리지 선택 (Redis 또는 쿠키)
+export const sessionStorage = USE_REDIS_SESSION 
+  ? redisSessionStorage 
+  : createCookieSessionStorage({
+      cookie: security.sessionConfig,
+    });
 
 // 비밀번호 해시화
 export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 10);
+  return bcrypt.hash(password, security.bcryptRounds);
 }
 
 // 비밀번호 검증
@@ -119,57 +119,109 @@ export async function verifyLogin(emailOrUsername: string, password: string) {
 
 // 세션 생성
 export async function createUserSession(userId: string, redirectTo: string, remember: boolean = false) {
-  const session = await sessionStorage.getSession();
-  
-  // 세션 토큰 생성
-  const sessionToken = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + (remember ? 30 : 1)); // remember me: 30일, 아니면 1일
-
-  // DB에 세션 저장
-  await db.session.create({
-    data: {
+  if (USE_REDIS_SESSION) {
+    // Redis 세션 사용
+    const sessionManager = getSessionManager();
+    
+    // Redis에 세션 생성
+    const sessionId = await sessionManager.createSession({
       userId,
-      token: sessionToken,
-      expiresAt,
-    },
-  });
+      rememberMe: remember,
+      createdAt: Date.now(),
+      lastAccessedAt: Date.now(),
+    });
+    
+    // 사용자별 세션 등록
+    await sessionManager.registerUserSession(userId, sessionId);
+    
+    // 동시 세션 제한 확인 (최대 5개)
+    await sessionManager.checkConcurrentSessions(userId, 5);
+    
+    // 쿠키에 세션 ID 저장
+    const session = await sessionStorage.getSession();
+    session.set('sessionId', sessionId);
+    
+    return redirect(redirectTo, {
+      headers: {
+        'Set-Cookie': await sessionStorage.commitSession(session, {
+          maxAge: remember ? 60 * 60 * 24 * 30 : 60 * 60 * 24,
+        }),
+      },
+    });
+  } else {
+    // 기존 DB 세션 사용
+    const session = await sessionStorage.getSession();
+    
+    // 세션 토큰 생성
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + (remember ? 30 : 1));
 
-  session.set('sessionToken', sessionToken);
-  
-  return redirect(redirectTo, {
-    headers: {
-      'Set-Cookie': await sessionStorage.commitSession(session, {
-        maxAge: remember ? 60 * 60 * 24 * 30 : 60 * 60 * 24, // 30일 또는 1일
-      }),
-    },
-  });
+    // DB에 세션 저장
+    await db.session.create({
+      data: {
+        userId,
+        token: sessionToken,
+        expiresAt,
+      },
+    });
+
+    session.set('sessionToken', sessionToken);
+    
+    return redirect(redirectTo, {
+      headers: {
+        'Set-Cookie': await sessionStorage.commitSession(session, {
+          maxAge: remember ? 60 * 60 * 24 * 30 : 60 * 60 * 24,
+        }),
+      },
+    });
+  }
 }
 
 // 세션에서 사용자 ID 가져오기
 export async function getUserId(request: Request): Promise<string | null> {
   const session = await sessionStorage.getSession(request.headers.get('Cookie'));
-  const sessionToken = session.get('sessionToken');
   
-  if (!sessionToken) {
-    return null;
-  }
-
-  // DB에서 세션 확인
-  const userSession = await db.session.findUnique({
-    where: { token: sessionToken },
-    include: { user: true },
-  });
-
-  if (!userSession || userSession.expiresAt < new Date()) {
-    // 만료된 세션 삭제
-    if (userSession) {
-      await db.session.delete({ where: { id: userSession.id } });
+  if (USE_REDIS_SESSION) {
+    // Redis 세션 사용
+    const sessionId = session.get('sessionId');
+    
+    if (!sessionId) {
+      return null;
     }
-    return null;
-  }
+    
+    const sessionManager = getSessionManager();
+    const sessionData = await sessionManager.getSession(sessionId);
+    
+    if (!sessionData || !sessionData.userId) {
+      return null;
+    }
+    
+    return sessionData.userId;
+  } else {
+    // 기존 DB 세션 사용
+    const sessionToken = session.get('sessionToken');
+    
+    if (!sessionToken) {
+      return null;
+    }
 
-  return userSession.userId;
+    // DB에서 세션 확인
+    const userSession = await db.session.findUnique({
+      where: { token: sessionToken },
+      include: { user: true },
+    });
+
+    if (!userSession || userSession.expiresAt < new Date()) {
+      // 만료된 세션 삭제
+      if (userSession) {
+        await db.session.delete({ where: { id: userSession.id } });
+      }
+      return null;
+    }
+
+    return userSession.userId;
+  }
 }
 
 // 세션에서 사용자 정보 가져오기
@@ -187,13 +239,26 @@ export async function getUser(request: Request): Promise<User | null> {
 // 로그아웃
 export async function logout(request: Request) {
   const session = await sessionStorage.getSession(request.headers.get('Cookie'));
-  const sessionToken = session.get('sessionToken');
   
-  if (sessionToken) {
-    // DB에서 세션 삭제
-    await db.session.deleteMany({
-      where: { token: sessionToken },
-    });
+  if (USE_REDIS_SESSION) {
+    // Redis 세션 사용
+    const sessionId = session.get('sessionId');
+    
+    if (sessionId) {
+      const sessionManager = getSessionManager();
+      // Redis에서 세션 삭제
+      await sessionManager.deleteSession(sessionId);
+    }
+  } else {
+    // 기존 DB 세션 사용
+    const sessionToken = session.get('sessionToken');
+    
+    if (sessionToken) {
+      // DB에서 세션 삭제
+      await db.session.deleteMany({
+        where: { token: sessionToken },
+      });
+    }
   }
 
   return redirect('/', {

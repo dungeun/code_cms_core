@@ -1,0 +1,288 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 주 데이터베이스
+  postgres-primary:
+    image: postgres:15-alpine
+    container_name: blee-postgres-primary
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-blee_cms}
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=ko_KR.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - blee-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL 읽기 전용 복제본
+  postgres-replica:
+    image: postgres:15-alpine
+    container_name: blee-postgres-replica
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-blee_cms}
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_MASTER_SERVICE: postgres-primary
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    networks:
+      - blee-network
+
+  # PgBouncer 연결 풀링
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: blee-pgbouncer
+    restart: unless-stopped
+    environment:
+      DATABASES_HOST: postgres-primary
+      DATABASES_PORT: 5432
+      DATABASES_DBNAME: ${DATABASE_NAME:-blee_cms}
+      DATABASES_USER: ${DATABASE_USER:-postgres}
+      DATABASES_PASSWORD: ${DATABASE_PASSWORD}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 25
+      MAX_DB_CONNECTIONS: 100
+    ports:
+      - "6432:5432"
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    networks:
+      - blee-network
+
+  # Redis 클러스터 노드 1
+  redis-node1:
+    image: redis:7-alpine
+    container_name: blee-redis-node1
+    restart: unless-stopped
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    volumes:
+      - redis_node1_data:/data
+    ports:
+      - "7001:6379"
+    networks:
+      - blee-network
+
+  # Redis 클러스터 노드 2
+  redis-node2:
+    image: redis:7-alpine
+    container_name: blee-redis-node2
+    restart: unless-stopped
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    volumes:
+      - redis_node2_data:/data
+    ports:
+      - "7002:6379"
+    networks:
+      - blee-network
+
+  # Redis 클러스터 노드 3
+  redis-node3:
+    image: redis:7-alpine
+    container_name: blee-redis-node3
+    restart: unless-stopped
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    volumes:
+      - redis_node3_data:/data
+    ports:
+      - "7003:6379"
+    networks:
+      - blee-network
+
+  # Redis Sentinel
+  redis-sentinel:
+    image: redis:7-alpine
+    container_name: blee-redis-sentinel
+    restart: unless-stopped
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./config/redis-sentinel.conf:/etc/redis/sentinel.conf
+    depends_on:
+      - redis-node1
+      - redis-node2
+      - redis-node3
+    networks:
+      - blee-network
+
+  # 블리CMS 애플리케이션
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: blee-cms-app
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${DATABASE_USER:-postgres}:${DATABASE_PASSWORD}@pgbouncer:5432/${DATABASE_NAME:-blee_cms}?schema=public
+      DATABASE_REPLICA_URL: postgresql://${DATABASE_USER:-postgres}:${DATABASE_PASSWORD}@postgres-replica:5432/${DATABASE_NAME:-blee_cms}?schema=public
+      REDIS_CLUSTER_NODES: redis-node1:6379,redis-node2:6379,redis-node3:6379
+      SESSION_SECRET: ${SESSION_SECRET}
+      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
+      NAVER_CLIENT_ID: ${NAVER_CLIENT_ID}
+      NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET}
+      TOSS_CLIENT_KEY: ${TOSS_CLIENT_KEY}
+      TOSS_SECRET_KEY: ${TOSS_SECRET_KEY}
+    volumes:
+      - uploads:/app/public/uploads
+      - plugins:/app/plugins
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+      redis-node1:
+        condition: service_started
+      redis-node2:
+        condition: service_started
+      redis-node3:
+        condition: service_started
+    networks:
+      - blee-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health?quick=true"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+  # Nginx 리버스 프록시
+  nginx:
+    image: nginx:alpine
+    container_name: blee-nginx
+    restart: unless-stopped
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx-sites:/etc/nginx/sites-enabled:ro
+      - nginx_cache:/var/cache/nginx
+      - letsencrypt:/etc/letsencrypt
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - app
+    networks:
+      - blee-network
+
+  # Prometheus 모니터링
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: blee-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    networks:
+      - blee-network
+
+  # Grafana 대시보드
+  grafana:
+    image: grafana/grafana:latest
+    container_name: blee-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_INSTALL_PLUGINS: redis-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana-provisioning:/etc/grafana/provisioning
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - blee-network
+
+  # Node Exporter (시스템 메트릭)
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: blee-node-exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+    networks:
+      - blee-network
+
+  # Postgres Exporter
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: blee-postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://${DATABASE_USER:-postgres}:${DATABASE_PASSWORD}@postgres-primary:5432/${DATABASE_NAME:-blee_cms}?sslmode=disable
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    networks:
+      - blee-network
+
+  # Redis Exporter
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: blee-redis-exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: redis-node1:6379
+    ports:
+      - "9121:9121"
+    depends_on:
+      - redis-node1
+    networks:
+      - blee-network
+
+networks:
+  blee-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  postgres_replica_data:
+  redis_node1_data:
+  redis_node2_data:
+  redis_node3_data:
+  uploads:
+  plugins:
+  nginx_cache:
+  letsencrypt:
+  prometheus_data:
+  grafana_data:

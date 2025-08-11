@@ -1,7 +1,7 @@
 import { AdminSidebar } from "./AdminSidebar";
 import { Button } from "~/components/ui/button";
 import { Link } from "@remix-run/react";
-import { Home, LogOut, Menu, X } from "lucide-react";
+import { Home, LogOut, Menu, X, ExternalLink, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "~/components/ui/sheet";
 
@@ -65,10 +65,41 @@ export function AdminLayout({ children, user }: AdminLayoutProps) {
             </span>
             
             <div className="flex items-center gap-1 sm:gap-2">
-              <Button variant="ghost" size="icon" asChild className="h-8 w-8 sm:h-9 sm:w-9">
+              {/* 메인페이지 바로가기 - 새 창 */}
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                asChild 
+                className="h-8 w-8 sm:h-9 sm:w-9"
+                title="메인페이지로 이동 (새 창)"
+              >
+                <Link to="/" target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                </Link>
+              </Button>
+              
+              {/* 메인페이지 바로가기 - 같은 창 */}
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                asChild 
+                className="h-8 w-8 sm:h-9 sm:w-9"
+                title="메인페이지로 이동"
+              >
                 <Link to="/">
                   <Home className="h-4 w-4" />
                 </Link>
+              </Button>
+              
+              {/* 새로고침 버튼 */}
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => window.location.reload()}
+                className="h-8 w-8 sm:h-9 sm:w-9"
+                title="새로고침"
+              >
+                <RefreshCw className="h-4 w-4" />
               </Button>
               
               <form action="/logout" method="post">

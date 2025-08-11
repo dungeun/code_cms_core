@@ -207,9 +207,28 @@ export default function Index() {
           {/* 메인 콘텐츠 영역 - 너비 확장 */}
           <main className="lg:col-span-9">
             {/* 상단 배너/공지사항 영역 - 높이 두 배 */}
-            <div className="mb-6 bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-12 text-white">
+            <div className="mb-6 bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-12 text-white relative">
               <h1 className="text-3xl font-bold mb-4">Blee CMS 커뮤니티</h1>
               <p className="text-blue-100 text-lg">다양한 주제로 자유롭게 소통하는 공간입니다</p>
+              
+              {/* 어드민 사용자에게만 관리 패널 링크 표시 */}
+              {user?.role === "ADMIN" && (
+                <div className="absolute top-4 right-4">
+                  <a
+                    href="/admin"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg text-white text-sm font-medium transition-colors"
+                    title="관리자 패널 (새 창)"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    관리 패널
+                  </a>
+                </div>
+              )}
             </div>
 
             {/* 카테고리별 섹션 - 2개씩 그리드 */}

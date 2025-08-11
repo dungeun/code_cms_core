@@ -2,7 +2,7 @@ import { json, redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from
 import { useLoaderData } from "@remix-run/react";
 import { Layout } from "~/components/layout/Layout";
 import { PostEditor } from "~/components/editor/PostEditor";
-import { db } from "~/lib/db.server";
+import { db } from "~/utils/db.server";
 import { requireUserId } from "~/lib/auth.server";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
