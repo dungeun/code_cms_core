@@ -27,7 +27,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       changelog: ${{ steps.changelog.outputs.changelog }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       
@@ -96,7 +96,7 @@ jobs:
           - 6379:6379
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: release/${{ github.event.inputs.version }}
       
@@ -129,7 +129,7 @@ jobs:
       matrix:
         platform: [linux/amd64, linux/arm64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: release/${{ github.event.inputs.version }}
       
@@ -167,7 +167,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [prepare-release, build-release]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: release/${{ github.event.inputs.version }}
       
@@ -248,7 +248,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [prepare-release, create-release]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: release/${{ github.event.inputs.version }}
       
@@ -291,7 +291,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [prepare-release, publish-docker]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       
