@@ -1,7 +1,7 @@
 # 프로덕션용 멀티스테이지 Dockerfile
 
 # Stage 1: Base image with dependencies
-FROM node:18-alpine AS base
+FROM node:24-alpine AS base
 
 # 필수 시스템 패키지 설치
 RUN apk add --no-cache \

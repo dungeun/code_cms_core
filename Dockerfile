@@ -2,7 +2,7 @@
 # 블리CMS Enterprise 프로덕션 배포용
 
 # Stage 1: Dependencies
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
 
@@ -16,7 +16,7 @@ RUN npm ci --only=production && \
     npx prisma generate
 
 # Stage 2: Builder
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
@@ -35,7 +35,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # Stage 3: Runner
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 RUN apk add --no-cache libc6-compat curl
 
 WORKDIR /app
