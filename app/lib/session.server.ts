@@ -17,9 +17,13 @@ import { security } from './env.server';
  */
 export const redisSessionStorage = createCookieSessionStorage({
   cookie: {
-    ...security.sessionConfig,
+    name: 'blee-cms-session',
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60, // 7일 (초 단위)
+    sameSite: 'lax',
     // 세션 ID만 쿠키에 저장
-    secrets: [process.env.SESSION_SECRET || 'default-session-secret'],
+    secrets: [process.env.SESSION_SECRET || 'fallback-secret-change-in-production'],
   },
 });
 

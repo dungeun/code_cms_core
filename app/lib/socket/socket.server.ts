@@ -446,22 +446,146 @@ export class SocketIOManager {
    * 채팅방 접근 권한 확인
    */
   private async checkChatRoomAccess(userId: string, roomId: string): Promise<boolean> {
-    // TODO: 실제 권한 확인 로직 구현
-    return true;
+    try {
+      // 사용자 정보 조회
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: { id: true, role: true, isActive: true },
+      });
+
+      if (!user || !user.isActive) {
+        return false;
+      }
+
+      // 관리자는 모든 방 접근 가능
+      if (user.role === 'ADMIN' || user.role === 'MODERATOR') {
+        return true;
+      }
+
+      // 공개 방인지 확인
+      if (roomId.startsWith('public:')) {
+        return true;
+      }
+
+      // 개인 방 접근 권한 확인
+      if (roomId.startsWith('private:')) {
+        const roomUsers = roomId.replace('private:', '').split('-').sort();
+        return roomUsers.includes(userId);
+      }
+
+      // 게시글 댓글 방 접근 권한 확인
+      if (roomId.startsWith('post:')) {
+        const postId = roomId.replace('post:', '');
+        const post = await db.post.findUnique({
+          where: { id: postId },
+          select: { 
+            id: true, 
+            isPublished: true,
+            menu: { select: { isActive: true } }
+          },
+        });
+
+        return post && post.isPublished && post.menu.isActive;
+      }
+
+      return false;
+    } catch (error) {
+      console.error('채팅방 접근 권한 확인 실패:', error);
+      return false;
+    }
   }
   
   /**
    * 채팅 메시지 저장
    */
   private async saveChatMessage(userId: string, data: any): Promise<any> {
-    // TODO: 실제 메시지 저장 로직 구현
-    return {
-      id: Date.now().toString(),
-      userId,
-      roomId: data.roomId,
-      message: data.message,
-      timestamp: new Date(),
-    };
+    try {
+      // 메시지 내용 검증 및 정화
+      const content = this.sanitizeMessage(data.message || data.content);
+      if (!content.trim()) {
+        throw new Error('빈 메시지는 저장할 수 없습니다');
+      }
+
+      // 사용자 정보 조회
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: { 
+          id: true, 
+          username: true, 
+          name: true,
+          profileImage: true,
+          role: true
+        },
+      });
+
+      if (!user) {
+        throw new Error('사용자를 찾을 수 없습니다');
+      }
+
+      // Redis에 메시지 저장 (실시간 채팅)
+      const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const message = {
+        id: messageId,
+        userId,
+        username: user.username,
+        name: user.name,
+        profileImage: user.profileImage,
+        role: user.role,
+        content,
+        roomId: data.roomId,
+        timestamp: new Date().toISOString(),
+        type: data.type || 'text',
+        replyTo: data.replyTo || null,
+      };
+
+      // Redis 저장 (실시간 채팅용)
+      const redis = getRedisCluster();
+      await redis.zadd(
+        `chat:${data.roomId}:messages`, 
+        Date.now(), 
+        JSON.stringify(message)
+      );
+
+      // 방별 최근 메시지 제한 (최근 1000개만 유지)
+      await redis.zremrangebyrank(`chat:${data.roomId}:messages`, 0, -1001);
+
+      // 중요한 메시지는 데이터베이스에도 저장
+      if (data.permanent || data.roomId.startsWith('post:')) {
+        try {
+          if (data.roomId.startsWith('post:')) {
+            const postId = data.roomId.replace('post:', '');
+            await db.comment.create({
+              data: {
+                postId,
+                authorId: userId,
+                content,
+              },
+            });
+          }
+        } catch (dbError) {
+          console.error('데이터베이스 메시지 저장 실패:', dbError);
+        }
+      }
+
+      return message;
+    } catch (error) {
+      console.error('메시지 저장 실패:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 메시지 내용 정화
+   */
+  private sanitizeMessage(content: string): string {
+    if (typeof content !== 'string') return '';
+    
+    return content
+      .trim()
+      .slice(0, 2000) // 최대 2000자 제한
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // 스크립트 태그 제거
+      .replace(/javascript:/gi, '') // javascript: 프로토콜 제거
+      .replace(/on\w+\s*=/gi, ''); // 이벤트 핸들러 제거
   }
   
   /**

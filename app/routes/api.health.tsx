@@ -507,48 +507,50 @@ async function checkStorage(): Promise<CheckResult> {
  */
 async function collectMetrics(): Promise<any> {
   try {
-    // TODO: Metrics collector not implemented yet
-    // const collector = getMetricsCollector();
-    // const metricsJson = await collector.getMetricsJSON();
-    const metricsJson: any[] = [];
+    const { getMetricsCollector } = await import('~/lib/monitoring/metrics-collector.server');
+    const collector = getMetricsCollector();
+    const metricsJson = await collector.getMetricsJSON();
     
     // 주요 메트릭 추출
-    const requestsPerMinute = metricsJson.find(
-      (m: any) => m.name === 'http_requests_total'
-    )?.values?.[0]?.value || 0;
+    const httpRequestsMetric = metricsJson.find(
+      (m: any) => m.name === 'blee_cms_http_requests_total'
+    );
+    const requestsPerMinute = httpRequestsMetric?.values?.reduce(
+      (sum: number, v: any) => sum + v.value, 0
+    ) || 0;
     
-    const activeConnections = metricsJson.find(
-      (m: any) => m.name === 'active_connections'
-    )?.values?.[0]?.value || 0;
+    const activeConnectionsMetric = metricsJson.find(
+      (m: any) => m.name === 'blee_cms_websocket_connections_active'
+    );
+    const activeConnections = activeConnectionsMetric?.values?.[0]?.value || 0;
     
-    const queuedJobs = metricsJson.find(
-      (m: any) => m.name === 'queue_size'
-    )?.values?.reduce((sum: number, v: any) => sum + v.value, 0) || 0;
+    const queueMetrics = metricsJson.filter(
+      (m: any) => m.name === 'blee_cms_queue_size'
+    );
+    const queuedJobs = queueMetrics.reduce(
+      (sum: number, metric: any) => sum + (metric.values?.[0]?.value || 0), 0
+    );
     
-    const cacheHits = metricsJson.find(
-      (m: any) => m.name === 'cache_operations_total' && m.labels?.result === 'hit'
-    )?.values?.[0]?.value || 0;
-    
-    const cacheMisses = metricsJson.find(
-      (m: any) => m.name === 'cache_operations_total' && m.labels?.result === 'miss'
-    )?.values?.[0]?.value || 0;
-    
-    const cacheHitRate = cacheHits + cacheMisses > 0
-      ? (cacheHits / (cacheHits + cacheMisses)) * 100
-      : 0;
+    const cacheHitRateMetric = metricsJson.find(
+      (m: any) => m.name === 'blee_cms_cache_hit_rate'
+    );
+    const cacheHitRate = cacheHitRateMetric?.values?.[0]?.value || 0;
     
     return {
-      requestsPerMinute,
-      activeConnections,
-      queuedJobs,
+      requestsPerMinute: Math.round(requestsPerMinute),
+      activeConnections: Math.round(activeConnections),
+      queuedJobs: Math.round(queuedJobs),
       cacheHitRate: parseFloat(cacheHitRate.toFixed(2)),
+      uptime: collector.getUptime(),
     };
   } catch (error) {
+    console.error('Failed to collect metrics:', error);
     return {
       requestsPerMinute: 0,
       activeConnections: 0,
       queuedJobs: 0,
       cacheHitRate: 0,
+      uptime: process.uptime(),
     };
   }
 }

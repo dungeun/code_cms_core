@@ -16,73 +16,9 @@ import { ExternalLink, Eye, Settings, Globe, Layout, Palette } from "lucide-reac
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await requireAdmin(request);
   
-  // TODO: 데이터베이스에서 UI 설정 가져오기
-  const uiConfig = {
-    header: {
-      logo: "/logo.png",
-      title: "Blee CMS",
-      showSearch: true,
-      ctaButton: {
-        text: "시작하기",
-        url: "/login",
-        enabled: true,
-      },
-    },
-    footer: {
-      columns: [
-        {
-          title: "서비스",
-          links: [
-            { text: "홈", url: "/" },
-            { text: "소개", url: "/about" },
-            { text: "연락처", url: "/contact" },
-          ],
-        },
-        {
-          title: "지원",
-          links: [
-            { text: "도움말", url: "/help" },
-            { text: "FAQ", url: "/faq" },
-          ],
-        },
-      ],
-    },
-    sections: [
-      {
-        id: "hero",
-        name: "히어로 섹션",
-        enabled: true,
-        order: 1,
-        config: {
-          title: "Blee CMS 커뮤니티",
-          description: "다양한 주제로 자유롭게 소통하는 공간입니다",
-          backgroundType: "gradient",
-          backgroundColor: "from-blue-500 to-blue-600",
-        },
-      },
-      {
-        id: "categories",
-        name: "카테고리 섹션",
-        enabled: true,
-        order: 2,
-        config: {
-          layout: "grid",
-          columns: 2,
-          showPostCount: true,
-        },
-      },
-      {
-        id: "popular",
-        name: "인기 게시물",
-        enabled: true,
-        order: 3,
-        config: {
-          limit: 10,
-          period: "week",
-        },
-      },
-    ],
-  };
+  // 데이터베이스에서 UI 설정 가져오기
+  const { getCachedUIConfig } = await import("~/lib/ui-config.server");
+  const uiConfig = await getCachedUIConfig();
 
   return json({ user, uiConfig });
 }
@@ -93,17 +29,79 @@ export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const action = formData.get("_action");
   
-  // TODO: 데이터베이스 업데이트 로직 구현
-  switch (action) {
-    case "update-header":
-      // 헤더 설정 업데이트
-      break;
-    case "update-footer":
-      // 푸터 설정 업데이트
-      break;
-    case "update-sections":
-      // 섹션 설정 업데이트
-      break;
+  const { getUIConfigManager, UIConfigKey } = await import("~/lib/ui-config.server");
+  const configManager = getUIConfigManager();
+  
+  try {
+    switch (action) {
+      case "update-header": {
+        const headerData = {
+          title: formData.get("title") as string,
+          subtitle: formData.get("subtitle") as string,
+          showSearch: formData.get("showSearch") === "on",
+          showNavigation: formData.get("showNavigation") === "on",
+          ctaButton: {
+            text: formData.get("ctaButtonText") as string,
+            url: formData.get("ctaButtonUrl") as string,
+            enabled: formData.get("ctaButtonEnabled") === "on",
+          },
+        };
+        await configManager.updateConfigSection(UIConfigKey.HEADER, headerData);
+        break;
+      }
+      
+      case "update-footer": {
+        // 푸터 설정 처리 로직
+        const footerEnabled = formData.get("footerEnabled") === "on";
+        const copyright = formData.get("copyright") as string;
+        
+        const footerData = {
+          enabled: footerEnabled,
+          copyright,
+          // 컬럼과 소셜 링크는 별도 처리 필요
+        };
+        
+        await configManager.updateConfigSection(UIConfigKey.FOOTER, footerData);
+        break;
+      }
+      
+      case "update-theme": {
+        const themeData = {
+          primaryColor: formData.get("primaryColor") as string,
+          secondaryColor: formData.get("secondaryColor") as string,
+          fontFamily: formData.get("fontFamily") as string,
+          borderRadius: formData.get("borderRadius") as string,
+          layout: formData.get("layout") as string,
+        };
+        await configManager.updateConfigSection(UIConfigKey.THEME, themeData);
+        break;
+      }
+      
+      case "update-features": {
+        const featuresData = {
+          comments: formData.get("comments") === "on",
+          reactions: formData.get("reactions") === "on",
+          socialShare: formData.get("socialShare") === "on",
+          relatedPosts: formData.get("relatedPosts") === "on",
+          newsletter: formData.get("newsletter") === "on",
+          darkMode: formData.get("darkMode") === "on",
+          searchHighlight: formData.get("searchHighlight") === "on",
+          breadcrumbs: formData.get("breadcrumbs") === "on",
+        };
+        await configManager.updateConfigSection(UIConfigKey.FEATURES, featuresData);
+        break;
+      }
+      
+      case "reset-config": {
+        await configManager.resetConfig();
+        break;
+      }
+    }
+    
+    return json({ success: true, message: "설정이 업데이트되었습니다." });
+  } catch (error) {
+    console.error("UI 설정 업데이트 실패:", error);
+    return json({ success: false, error: "설정 업데이트에 실패했습니다." }, { status: 500 });
   }
   
   return json({ success: true });

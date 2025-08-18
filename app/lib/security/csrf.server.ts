@@ -17,7 +17,41 @@ export function generateCSRFToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-// CSRF 토큰 검증
+// CSRF 토큰 검증 (개선된 버전)
+export function validateCSRFToken(
+  requestToken: string | undefined,
+  sessionId: string
+): boolean {
+  if (!requestToken || !sessionId) {
+    return false;
+  }
+  
+  try {
+    // 세션 기반 토큰 생성
+    const expectedToken = crypto
+      .createHmac('sha256', process.env.SESSION_SECRET!)
+      .update(sessionId)
+      .digest('hex');
+    
+    return crypto.timingSafeEqual(
+      Buffer.from(requestToken, 'hex'),
+      Buffer.from(expectedToken, 'hex')
+    );
+  } catch (error) {
+    console.error('CSRF token validation error:', error);
+    return false;
+  }
+}
+
+// 세션 기반 CSRF 토큰 생성
+export function generateCSRFTokenForSession(sessionId: string): string {
+  return crypto
+    .createHmac('sha256', process.env.SESSION_SECRET!)
+    .update(sessionId)
+    .digest('hex');
+}
+
+// 기존 검증 함수 (호환성 유지)
 export function verifyCSRFToken(
   sessionToken: string | undefined,
   requestToken: string | undefined
@@ -26,10 +60,14 @@ export function verifyCSRFToken(
     return false;
   }
   
-  return crypto.timingSafeEqual(
-    Buffer.from(sessionToken),
-    Buffer.from(requestToken)
-  );
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(sessionToken, 'hex'),
+      Buffer.from(requestToken, 'hex')
+    );
+  } catch (error) {
+    return false;
+  }
 }
 
 // 요청에서 CSRF 토큰 추출

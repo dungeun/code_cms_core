@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -202,7 +202,7 @@ enum PostStatus {
 model PageConfig {
   id        String   @id @default(cuid())
   name      String   @unique // 'homepage', 'about', etc
-  config    Json     // 블록 설정 배열
+  config    String   // 블록 설정 배열 (JSON string in SQLite)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   
@@ -214,7 +214,7 @@ model PluginData {
   id        String   @id @default(cuid())
   pluginId  String
   key       String
-  value     Json
+  value     String   // JSON data stored as string in SQLite
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
@@ -232,7 +232,7 @@ model OAuthAccount {
   refreshToken      String?   @map("refresh_token")
   tokenExpiry       DateTime? @map("token_expiry")
   scope             String?
-  profileData       Json?     @map("profile_data") // 전체 프로필 정보 저장
+  profileData       String?   @map("profile_data") // 전체 프로필 정보 저장 (JSON string)
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
   
@@ -249,9 +249,9 @@ model Notification {
   userId            String    @map("user_id")
   type              String
   priority          String
-  channels          String[]
+  channels          String   // Comma-separated list for SQLite
   status            String
-  data              Json
+  data              String   // JSON data stored as string in SQLite
   
   createdAt         DateTime  @default(now()) @map("created_at")
   sentAt            DateTime? @map("sent_at")
@@ -275,7 +275,7 @@ model Notification {
 model NotificationPreference {
   id                String    @id @default(uuid())
   userId            String    @unique @map("user_id")
-  data              Json      // 설정 데이터 (channels, types, quietHours 등)
+  data              String   // JSON data stored as string in SQLite      // 설정 데이터 (channels, types, quietHours 등)
   
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
